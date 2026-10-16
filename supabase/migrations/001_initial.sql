@@ -1,0 +1,14 @@
+create extension if not exists pgcrypto;
+create table public.companies (id uuid primary key default gen_random_uuid(), slug text unique not null, name text not null, plan text not null default 'free' check(plan in ('free','paid')), subscription_status text, current_period_end timestamptz, created_at timestamptz not null default now());
+create table public.profiles (id uuid primary key references auth.users(id) on delete cascade, company_id uuid not null references public.companies(id), full_name text, role text default 'recruiter', created_at timestamptz not null default now());
+create table public.shortlists (id uuid primary key default gen_random_uuid(), company_id uuid not null references public.companies(id) on delete cascade, name text not null, created_at timestamptz not null default now());
+create table public.shortlist_candidates (shortlist_id uuid references public.shortlists(id) on delete cascade, candidate_id text not null, added_at timestamptz not null default now(), primary key(shortlist_id,candidate_id));
+create table public.saved_briefs (id uuid primary key default gen_random_uuid(), company_id uuid not null references public.companies(id) on delete cascade, name text not null, brief text not null, created_at timestamptz not null default now());
+create table public.stripe_events (id text primary key, type text not null, created_at_event timestamptz not null, payload jsonb not null, received_at timestamptz not null default now());
+create or replace function public.my_company_id() returns uuid language sql stable security definer set search_path=public as $$ select company_id from public.profiles where id=auth.uid() $$;
+alter table public.companies enable row level security; alter table public.profiles enable row level security; alter table public.shortlists enable row level security; alter table public.shortlist_candidates enable row level security; alter table public.saved_briefs enable row level security;
+create policy "company members read company" on public.companies for select using(id=public.my_company_id());
+create policy "own profile" on public.profiles for select using(id=auth.uid());
+create policy "company shortlist isolation" on public.shortlists using(company_id=public.my_company_id()) with check(company_id=public.my_company_id());
+create policy "shortlist candidate isolation" on public.shortlist_candidates using(exists(select 1 from public.shortlists s where s.id=shortlist_id and s.company_id=public.my_company_id())) with check(exists(select 1 from public.shortlists s where s.id=shortlist_id and s.company_id=public.my_company_id()));
+create policy "company brief isolation" on public.saved_briefs using(company_id=public.my_company_id()) with check(company_id=public.my_company_id());

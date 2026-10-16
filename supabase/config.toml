@@ -1,0 +1,11 @@
+project_id = "talent-radar"
+[api]
+enabled = true
+[db]
+port = 54322
+[studio]
+port = 54323
+[auth]
+enabled = true
+[auth.email]
+enable_confirmations = false
