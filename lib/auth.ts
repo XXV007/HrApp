@@ -32,7 +32,6 @@ export function getAdmin() {
 }
 export async function requireUser() {
   const token = (await headers()).get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (!token) return null;
   const supabase = await getSupabase();
   const {
     data: { user },

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { getAdmin } from "@/lib/auth";
+import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 export function verifyStripeSignature(raw: string, sig: string, secret: string, now = Date.now()) {
   const parts = sig.split(",").reduce<Record<string, string[]>>((result, item) => {
     const [key, value] = item.split("=", 2);
@@ -23,16 +25,21 @@ export function verifyStripeSignature(raw: string, sig: string, secret: string, 
 export async function POST(req: NextRequest) {
   const raw = await req.text();
   const sig = req.headers.get("stripe-signature") || "";
-  if (!process.env.STRIPE_WEBHOOK_SECRET || !sig ||
-    !verifyStripeSignature(raw, sig, process.env.STRIPE_WEBHOOK_SECRET))
+  const secret = getServerEnv().STRIPE_WEBHOOK_SECRET;
+  if (!secret || !sig || !verifyStripeSignature(raw, sig, secret))
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-  let event: any;
+  let event: {
+    id?: string;
+    type?: string;
+    created?: number;
+    data?: { object?: { metadata?: { company?: string }; status?: string; current_period_end?: number } };
+  };
   try {
     event = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  if (!event.id || !event.type)
+  if (!event.id || !event.type || typeof event.created !== "number")
     return NextResponse.json({ error: "Malformed event" }, { status: 400 });
   const db = getAdmin();
   const { error: insertError } = await db
@@ -49,11 +56,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   const obj = event.data?.object || {};
   const company = obj.metadata?.company;
-  if (company) {
+  if (company && ["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
     const { data: latest } = await db
       .from("stripe_events")
       .select("created_at_event")
-      .eq("type", event.type)
       .filter("payload->data->object->metadata->>company", "eq", company)
       .order("created_at_event", { ascending: false })
       .limit(1)
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
         obj.status === "canceled"
           ? "free"
           : "paid";
-      await db
+      const { error: updateError } = await db
         .from("companies")
         .update({
           plan,
@@ -78,6 +84,13 @@ export async function POST(req: NextRequest) {
         .eq("slug", company)
         .or(`last_billing_event_at.is.null,last_billing_event_at.lte.${eventTime}`)
         .select();
+      if (updateError) {
+        logger.error("Billing state update failed", {
+          company,
+          error: updateError.message,
+        });
+        return NextResponse.json({ error: "Unable to update billing state" }, { status: 500 });
+      }
     }
   }
   return NextResponse.json({ received: true });

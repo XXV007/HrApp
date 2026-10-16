@@ -1,53 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCandidates } from "@/lib/data";
 import { searchCandidates } from "@/lib/search";
 import { getSupabase, requireCompany } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   try {
     const membership = await requireCompany();
     if (!membership) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const db = await getSupabase();
+    const quota = await rateLimit(db, `search:${membership.user.id}`, 20);
+    if (!quota.allowed)
+      return NextResponse.json(
+        { error: "Too many searches. Try again shortly." },
+        { status: 429, headers: { "Retry-After": String(quota.retryAfter) } },
+      );
     const body = await req.json();
     const brief = typeof body.brief === "string" ? body.brief.trim() : "";
     if (!brief)
       return NextResponse.json({ error: "brief is required" }, { status: 400 });
-    const db = await getSupabase();
-    const { data: company } = await db.from("companies").select("plan").eq("id", membership.companyId).single();
-    const paid = company?.plan === "paid";
-    let remaining: number | null = null;
-    if (!paid) {
-      const { data: consumed, error } = await db.rpc("consume_search_credit", { p_company_id: membership.companyId, p_limit: 5 });
-      if (!error && typeof consumed === "number" && consumed < 0) return NextResponse.json({ error: "Search limit reached", searches_remaining: 0 }, { status: 402 });
-      if (error)
-        return NextResponse.json(
-          { error: "Unable to check search quota" },
-          { status: 503 },
-        );
-      remaining = typeof consumed === "number" ? consumed : null;
+    const { data: candidateRows, error: candidateError } = await db
+      .from("candidates")
+      .select("document");
+    if (candidateError)
+      return NextResponse.json({ error: "Unable to load candidates" }, { status: 503 });
+    const candidates = candidateRows.map(({ document }) => document);
+    const result = searchCandidates(candidates, brief, 1, 20);
+    const allResults = searchCandidates(candidates, brief, 1, 10000).results;
+    const { data: saved, error: saveError } = await db.rpc(
+      "create_search_with_quota",
+      {
+        p_company_id: membership.companyId,
+        p_brief: brief,
+        p_filters: result.filters,
+        p_results: allResults,
+        p_limit: 5,
+      },
+    );
+    if (saveError) {
+      if (saveError.message.includes("search limit reached"))
+        return NextResponse.json({ error: "Search limit reached", searches_remaining: 0 }, { status: 402 });
+      return NextResponse.json({ error: "Unable to save search results" }, { status: 503 });
     }
-    const result = searchCandidates(getCandidates(), brief, 1, 20);
-    const allResults = searchCandidates(getCandidates(), brief, 1, 10000).results;
-    const { data: savedSearch, error: saveError } = await db
-      .from("searches")
-      .insert({
-        company_id: membership.companyId,
-        brief,
-        filters: result.filters,
-        results: allResults,
-      })
-      .select("id")
-      .single();
-    if (saveError || !savedSearch)
-      return NextResponse.json(
-        { error: "Unable to save search results" },
-        { status: 503 },
-      );
-    if (remaining === null && !paid) remaining = 0;
+    const savedSearch = saved?.[0];
+    if (!savedSearch) return NextResponse.json({ error: "Unable to save search results" }, { status: 503 });
     return NextResponse.json({
-      search_id: savedSearch.id, filters: result.filters, total: result.total,
-      results: result.results, searches_remaining: paid ? null : remaining,
+      search_id: savedSearch.search_id, filters: result.filters, total: result.total,
+      results: result.results, searches_remaining: savedSearch.searches_remaining,
     });
   } catch (error) {
-    console.error("Search request failed", error);
+    logger.error("Search request failed", {
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Unable to complete search" }, { status: 500 });
   }
 }

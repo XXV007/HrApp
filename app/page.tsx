@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
-type Result = { id: string; candidate: any; score: number };
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { getBrowserSupabase } from "@/lib/browser-auth";
+import type { Candidate } from "@/lib/types";
+type Result = { id: string; candidate: Candidate; score: number };
 const examples = [
   "Senior React engineers in New York who have worked at a startup",
   "Product designers in San Francisco who are open to work",
@@ -13,6 +18,15 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<{ full_name?: string; companies?: { name?: string; plan?: string } } | null>(null);
+  const [shortlistId, setShortlistId] = useState<string | null>(null);
+  const router = useRouter();
+  useEffect(() => {
+    fetch("/api/me").then(async (response) => {
+      if (response.status === 401) router.push("/login");
+      else if (response.ok) setProfile(await response.json());
+    });
+  }, [router]);
   async function search() {
     setLoading(true);
     setError(null);
@@ -46,6 +60,42 @@ export default function Home() {
       setLoading(false);
     }
   }
+  async function saveBrief() {
+    setError(null);
+    const response = await fetch("/api/saved-briefs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ brief, name: brief.slice(0, 60) }),
+    });
+    if (!response.ok)
+      setError((await response.json()).error || "Unable to save brief.");
+    else setSaved(true);
+  }
+  async function signOut() {
+    await getBrowserSupabase().auth.signOut();
+    router.push("/login");
+  }
+  async function shortlist(candidateId: string) {
+    setError(null);
+    let id = shortlistId;
+    if (!id) {
+      const created = await fetch("/api/shortlists", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Search shortlist" }),
+      });
+      if (!created.ok) {
+        setError("Unable to create shortlist.");
+        return;
+      }
+      id = (await created.json()).id;
+      setShortlistId(id);
+    }
+    const response = await fetch(`/api/shortlists/${id}/people/${candidateId}`, {
+      method: "POST",
+    });
+    if (!response.ok) setError("Unable to add candidate to shortlist.");
+  }
   return (
     <main>
       <aside>
@@ -56,20 +106,20 @@ export default function Home() {
           </span>
         </div>
         <nav>
-          <a className="active">
+          <Link className="active" href="/">
             ⌕ <span>Search</span>
-          </a>
-          <a>
+          </Link>
+          <Link href="/shortlists">
             ♡ <span>Shortlists</span>
-          </a>
-          <a>
+          </Link>
+          <Link href="/saved-briefs">
             ◷ <span>Saved briefs</span>
-          </a>
+          </Link>
         </nav>
         <div className="side-bottom">
           <div className="plan">
             <small>PLAN</small>
-            <strong>Free workspace</strong>
+            <strong>{profile?.companies?.plan === "paid" ? "Paid workspace" : "Free workspace"}</strong>
             <div className="meter">
               <i />
             </div>
@@ -78,10 +128,10 @@ export default function Home() {
           <div className="profile">
             <span className="avatar">JD</span>
             <div>
-              <strong>Jordan Davis</strong>
-              <small>Acme recruiting</small>
+              <strong>{profile?.full_name || "Recruiter"}</strong>
+              <small>{profile?.companies?.name || "Workspace"}</small>
             </div>
-            <span>•••</span>
+            <button className="profile-menu" onClick={signOut} aria-label="Sign out">↪</button>
           </div>
         </div>
       </aside>
@@ -94,7 +144,7 @@ export default function Home() {
               Describe who you’re looking for in plain English.
             </p>
           </div>
-          <button className="outline" onClick={() => setSaved(!saved)}>
+          <button className="outline" onClick={saveBrief}>
             {saved ? "✓ Saved" : "＋ Save brief"}
           </button>
         </header>
@@ -148,7 +198,7 @@ export default function Home() {
                 <div className="card-top">
                   {/* eslint-disable-next-line @next/next/no-img-element -- fixture URLs use an external host not configured for next/image. */}
                   <img src={c.avatar_url} alt="" />
-                  <button aria-label={`Save ${c.full_name}`}>♡</button>
+                  <button onClick={() => shortlist(c.id)} aria-label={`Save ${c.full_name}`}>♡</button>
                 </div>
                 <h3>{c.full_name}</h3>
                 <p className="role">{c.current_title || c.role}</p>

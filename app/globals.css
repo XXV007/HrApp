@@ -343,6 +343,64 @@ p {
 .empty p {
   font-size: 13px;
 }
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.auth-card {
+  width: min(100%, 420px);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 34px;
+  box-shadow: 0 18px 50px #193e2c0d;
+}
+.auth-card .brand { margin: 0 0 42px; }
+.auth-card h1 { margin-top: 10px; }
+.auth-card label {
+  display: block;
+  margin: 20px 0 7px;
+  color: #52645d;
+  font-size: 12px;
+  font-weight: 600;
+}
+.auth-card input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 11px 12px;
+  font: inherit;
+}
+.auth-submit { width: 100%; margin-top: 20px; }
+.profile-menu {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.standalone-page {
+  min-height: 100vh;
+}
+.list-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 34px;
+  max-width: 720px;
+}
+.list-card {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.list-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
 @media (max-width: 800px) {
   aside {
     width: 65px;

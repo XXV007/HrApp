@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
     .single();
   if (error)
     return NextResponse.json({ error: "Unable to create shortlist" }, { status: 503 });
-  if (Array.isArray(body.candidateIds) && body.candidateIds.length)
-    await db
+  if (Array.isArray(body.candidateIds) && body.candidateIds.length) {
+    const { error: candidateError } = await db
       .from("shortlist_candidates")
       .insert(
         body.candidateIds.map((candidate_id: string) => ({
@@ -38,5 +38,8 @@ export async function POST(req: NextRequest) {
           candidate_id,
         })),
       );
+    if (candidateError)
+      return NextResponse.json({ error: "Unable to add shortlist candidates" }, { status: 503 });
+  }
   return NextResponse.json(data, { status: 201 });
 }

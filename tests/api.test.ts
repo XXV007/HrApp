@@ -27,12 +27,19 @@ describe("search API", () => {
   });
 
   it("persists successful search results", async () => {
-    requireCompany.mockResolvedValue({ companyId: "company-1" });
+    requireCompany.mockResolvedValue({ companyId: "company-1", user: { id: "user-1" } });
     getSupabase.mockResolvedValue({
-      from: () => ({
+      rpc: async (name: string) =>
+        name === "consume_api_rate_limit"
+          ? { data: [{ allowed: true, retry_after: 0 }], error: null }
+          : { data: [{ search_id: "search-1", searches_remaining: null }], error: null },
+      from: (table: string) => table === "companies" ? ({
         select: () => ({
           eq: () => ({ single: async () => ({ data: { plan: "paid" } }) }),
         }),
+      }) : table === "candidates" ? ({
+        select: async () => ({ data: [{ document: { id: "candidate-1", full_name: "Test Candidate" } }], error: null }),
+      }) : ({
         insert: () => ({
           select: () => ({
             single: async () => ({ data: { id: "search-1" }, error: null }),

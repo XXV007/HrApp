@@ -99,6 +99,7 @@ Authenticate the CLI, link the project, and apply the migrations:
 npx supabase login
 npx supabase link --project-ref YOUR_PROJECT_REF
 npx supabase db push
+npm run import:candidates
 ```
 
 The migration set creates:
@@ -110,6 +111,15 @@ The migration set creates:
 - Candidate documents and full-text search indexes
 - Stripe event storage
 - Company-scoped row-level security policies
+
+`npm run import:candidates` loads the tracked candidate fixture into the
+Supabase `candidates` table in 500-row batches. It requires the server-side
+service-role key and is intended for initial setup or fixture refreshes.
+
+The search quota and API rate limit are enforced in Postgres through the
+`create_search_with_quota` and `consume_api_rate_limit` functions. This keeps
+quota consumption and search persistence atomic and works across multiple
+application instances.
 
 ### Local project
 
@@ -198,6 +208,27 @@ The test suite covers:
 - Authentication rejection and persisted search responses
 - Valid, tampered, malformed, and expired Stripe signatures
 
+Optional Supabase integration checks can run against a configured project after
+the migrations and candidate import have completed:
+
+```bash
+RUN_INTEGRATION=1 npm test -- tests/integration/supabase.test.ts
+```
+
+Browser smoke tests use Playwright:
+
+```bash
+npx playwright install
+npm run test:e2e
+```
+
+Set `E2E_BASE_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` for an authenticated
+workflow test. Without credentials, the smoke test validates the login page.
+
+The default Playwright configuration starts a production-like local server for
+the browser suite. If a server is already running, point the suite at it with
+`E2E_BASE_URL`.
+
 Convenience commands are also available through the Makefile:
 
 ```bash
@@ -225,6 +256,9 @@ lib/
 ├── search.ts                        # Brief parsing and ranking
 ├── data.ts                          # Candidate fixture access
 ├── auth.ts                          # Supabase auth and tenancy checks
+├── env.ts                           # Server environment validation
+├── logger.ts                         # Structured JSON application logs
+├── rate-limit.ts                     # Postgres-backed rate-limit client
 └── types.ts                         # Shared domain types
 supabase/
 ├── migrations/                      # Database schema, RLS, search, billing
@@ -245,10 +279,8 @@ tests/                               # Vitest search, API, and Stripe tests
 ## Current scope
 
 Talent Radar is an intentionally focused MVP. The API and persistence layers
-are ready for a production-oriented integration, while the browser experience
-currently centers on the search workspace. An authentication screen, richer
-candidate detail views, and full shortlist navigation are natural next UI
-surfaces.
+are ready for a production-oriented integration, while richer candidate detail views, subscription checkout, and deeper
+shortlist management remain future product surfaces.
 
 ## License
 

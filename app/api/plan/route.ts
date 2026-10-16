@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSupabase, requireUser } from "@/lib/auth";
+import { getSupabase, requireCompany } from "@/lib/auth";
 export async function GET() {
-  const user = await requireUser();
-  if (!user)
+  const membership = await requireCompany();
+  if (!membership)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data, error } = await (
     await getSupabase()
@@ -11,6 +11,6 @@ export async function GET() {
     .select("plan,subscription_status,current_period_end")
     .single();
   return error
-    ? NextResponse.json({ plan: "free", subscription_status: "inactive" })
+    ? NextResponse.json({ error: "Unable to load plan" }, { status: 503 })
     : NextResponse.json(data);
 }
