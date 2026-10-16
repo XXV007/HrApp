@@ -1,38 +1,256 @@
-# Talent Radar
+<div align="center">
 
-A minimal recruiter assessment app built with Next.js 16 App Router, Supabase, and Stripe webhook handling.
+# ✦ Talent Radar
 
-## Run locally
+### A focused talent intelligence workspace for modern recruiting teams
+
+Describe the person you need in plain English, surface the most relevant candidates, and move promising people into organized shortlists.
+
+<p>
+  <img src="https://img.shields.io/badge/Next.js-16-111827?style=flat-square&logo=next.js&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Supabase-ready-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase">
+  <img src="https://img.shields.io/badge/Stripe-webhooks-635BFF?style=flat-square&logo=stripe&logoColor=white" alt="Stripe">
+</p>
+
+</div>
+
+> Talent Radar is a recruiter-focused MVP built with the Next.js App Router. It combines natural-language candidate search, relevance ranking, multi-tenant Supabase persistence, shortlist workflows, saved briefs, usage limits, and Stripe billing events in one clean workspace.
+
+## Product preview
+
+The workspace is designed around one high-signal action:
+
+1. **Write a hiring brief** — “Senior React engineers in New York who have worked at a startup.”
+2. **Search the candidate universe** — structured filters are extracted from the brief.
+3. **Review ranked matches** — candidates are returned with relevance scores, skills, location, and work availability.
+4. **Save the workflow** — persist searches, briefs, and shortlist decisions for the recruiting team.
+
+## Features
+
+| Area | What is included |
+| --- | --- |
+| **Natural-language search** | Parses roles, seniority, cities, skills, schools, languages, PhDs, startup experience, and “open to work” intent. |
+| **Deterministic ranking** | Produces repeatable, fixture-compatible results with relevance scoring and stable ordering. |
+| **Candidate workspace** | Responsive search interface with example briefs, loading states, empty states, match percentages, and actionable error messaging. |
+| **Search history** | Stores complete search results and supports paginated retrieval through a persistent search ID. |
+| **Shortlists** | Creates company-scoped shortlists and adds or removes candidates from them. |
+| **Saved briefs** | Saves reusable recruiting prompts for future searches. |
+| **Authentication and tenancy** | Supabase bearer-token authentication with company membership checks and row-level security policies. |
+| **Usage controls** | Free-plan search credits are enforced transactionally in Postgres; paid companies bypass the free limit. |
+| **Billing events** | Stripe webhook signatures are verified, duplicate events are ignored, and out-of-order billing events do not overwrite newer state. |
+| **Extensible search intelligence** | The structured `SearchFilters` contract can sit behind an LLM provider without changing the API response shape. |
+
+## Tech stack
+
+- **Frontend:** Next.js 16, React 19, TypeScript, CSS
+- **Backend:** Next.js Route Handlers
+- **Database and auth:** Supabase, Postgres, Supabase Auth, row-level security
+- **Payments:** Stripe webhook processing
+- **Validation:** TypeScript, ESLint, Vitest
+- **Data:** JSON candidate fixtures plus a Supabase JSONB candidate store
+
+## Quick start
+
+### Prerequisites
+
+- Node.js `>=20.9.0`
+- npm
+- A Supabase project, or Docker plus the Supabase CLI for local development
+- Stripe CLI for live webhook forwarding tests
+
+### Install and run
 
 ```bash
-make setup
+git clone https://github.com/XXV007/HrApp.git
+cd HrApp
+
+npm install
 cp .env.example .env.local
-# Set the Supabase URL, anon key, service-role key, and Stripe webhook secret.
-npx supabase start             # local development
-make db-reset                  # applies migrations and supabase/seed.sql
-make dev
 ```
 
-For a hosted Supabase project, set the three Supabase variables from the
-project's API settings in `.env.local` (never commit that file), then apply
-the migrations with `npx supabase link --project-ref YOUR_PROJECT_REF` and
-`npx supabase db push`. The Supabase CLI is required for these commands.
+Set the values in `.env.local` before starting the app:
 
-Stripe webhook requests are verified using the Stripe signing-secret format.
-Run `npm test` to validate accepted, tampered, malformed, and expired signed
-events. To exercise a live test event, run `stripe listen --forward-to
-localhost:3000/api/stripe/webhook`, copy the generated `whsec_...` value to
-`STRIPE_WEBHOOK_SECRET`, and trigger a test event with the Stripe CLI.
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+LLM_API_KEY=
+LLM_MODEL=
+```
 
-The search API is deterministic and fixture-compatible (`POST /api/search`); an LLM provider can be integrated behind `LLM_API_KEY` without changing the structured `SearchFilters` contract. Fixture files are intentionally kept at the repository root.
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Supabase setup
+
+### Hosted project
+
+Authenticate the CLI, link the project, and apply the migrations:
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push
+```
+
+The migration set creates:
+
+- Companies and recruiter profiles
+- Shortlists and shortlist candidates
+- Saved briefs
+- Persisted searches and monthly search usage
+- Candidate documents and full-text search indexes
+- Stripe event storage
+- Company-scoped row-level security policies
+
+### Local project
+
+With Docker running:
+
+```bash
+npx supabase start
+npm run db:reset
+```
+
+The seed script creates local Acme and Globex recruiter accounts. The sample
+password is intended only for local development and must not be reused.
 
 ## API
 
-- Recruiter endpoints require `Authorization: Bearer <Supabase access token>`.
-- `POST /api/search`: `{ brief }` returns a `search_id`, filters, total, first 20 results, and `searches_remaining`.
-- `GET /api/search/{search_id}?page=N` returns persisted results (20 per page).
-- `GET /api/people/{id}`, `GET/POST /api/shortlists`, and
-  `POST/DELETE /api/shortlists/{shortlist_id}/people/{person_id}`.
-- `GET/POST /api/saved-briefs`, `GET /api/plan`, and `POST /api/billing/events`.
-- Billing events require a valid Stripe signature, are deduplicated, and are
-  applied only in company/timestamp order.
+Protected endpoints expect:
+
+```http
+Authorization: Bearer <supabase-access-token>
+```
+
+### Search
+
+```http
+POST /api/search
+Content-Type: application/json
+
+{ "brief": "Senior React engineers in New York who have worked at a startup" }
+```
+
+Returns a `search_id`, parsed filters, total matches, the first page of results,
+and the remaining free-plan search allowance.
+
+```http
+GET /api/search/{search_id}?page=1
+```
+
+Returns the persisted results in pages of 20.
+
+### Recruiting workflows
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/people/{id}` | Retrieve an authenticated candidate profile |
+| `GET` / `POST` | `/api/shortlists` | List or create company shortlists |
+| `POST` / `DELETE` | `/api/shortlists/{shortlist_id}/people/{person_id}` | Manage shortlist membership |
+| `GET` / `POST` | `/api/saved-briefs` | List or save recruiting briefs |
+| `GET` | `/api/plan` | Read the current company plan |
+| `POST` | `/api/billing/events` | Process a signed billing event |
+| `POST` | `/api/stripe/webhook` | Receive Stripe webhook events |
+
+## Stripe webhook testing
+
+Start the app, then forward Stripe test events to the webhook route:
+
+```bash
+stripe login
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+Copy the generated `whsec_...` value into `.env.local`, restart the dev
+server, and trigger a test event:
+
+```bash
+stripe trigger customer.subscription.created
+```
+
+Webhook handling verifies the Stripe signature, rejects stale or malformed
+requests, deduplicates event IDs, and applies events in company/timestamp order.
+
+## Quality checks
+
+Run the complete local validation suite:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+The test suite covers:
+
+- Search filter extraction and deterministic ranking
+- Search pagination
+- Authentication rejection and persisted search responses
+- Valid, tampered, malformed, and expired Stripe signatures
+
+Convenience commands are also available through the Makefile:
+
+```bash
+make dev
+make lint
+make test
+make typecheck
+make build
+make db-reset
+```
+
+## Project structure
+
+```text
+app/
+├── page.tsx                         # Recruiter search workspace
+└── api/
+    ├── search/                      # Search and persisted result pages
+    ├── people/                      # Candidate profiles
+    ├── shortlists/                  # Shortlist management
+    ├── saved-briefs/                # Saved recruiting prompts
+    ├── plan/                        # Company plan information
+    └── stripe/webhook/              # Signed Stripe events
+lib/
+├── search.ts                        # Brief parsing and ranking
+├── data.ts                          # Candidate fixture access
+├── auth.ts                          # Supabase auth and tenancy checks
+└── types.ts                         # Shared domain types
+supabase/
+├── migrations/                      # Database schema, RLS, search, billing
+└── seed.sql                         # Local development accounts
+tests/                               # Vitest search, API, and Stripe tests
+```
+
+## Security notes
+
+- Never commit `.env.local`, Supabase service-role keys, Stripe secrets, or
+  access tokens.
+- Keep the Supabase service-role key server-side only.
+- Use test-mode Stripe keys during development.
+- Replace the seeded local credentials before using a shared environment.
+- Candidate access is protected by authenticated company membership and
+  database row-level security.
+
+## Current scope
+
+Talent Radar is an intentionally focused MVP. The API and persistence layers
+are ready for a production-oriented integration, while the browser experience
+currently centers on the search workspace. An authentication screen, richer
+candidate detail views, and full shortlist navigation are natural next UI
+surfaces.
+
+## License
+
+This project is currently private and does not yet declare an open-source
+license.
